@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Define directories
+genome_dir="mosqt/Aaegy_genome"
+trimmed_dirs="ATACseq2_analysis/trimmed"
+output_dir="ATACseq2_analysis/alignment_output/"
+
+# Create the output directory if it doesn't exist
+mkdir -p "$output_dir"
+
+# Loop through subdirectories in the trimmed base directory
+for sample_dir in "$trimmed_dirs"/*; do
+        if [ -d "$sample_dir" ] && [[ ! $(basename "$sample_dir") =~ _fastqc$ ]]; then
+                sample_id=$(basename "$sample_dir")
+
+                # Define the pair of files
+                file1="${sample_dir}/${sample_id}_1_val_1.fq.gz"
+                file2="${sample_dir}/${sample_id}_2_val_2.fq.gz"
+
+                # Create a temporary sbatch script
+                SBATCH_SCRIPT="/tmp/${sample_id}_alignment.sh"
+                cat > "$SBATCH_SCRIPT" <<EOL
+#!/bin/bash
+
+#SBATCH --output=${output_dir}${sample_id}_%j.log
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=32G
+#SBATCH --time=24:00:00
+#SBATCH --mail-user=email@address
+#SBATCH --mail-type=END,FAIL
+
+module load libdeflate/1.17 htslib/1.19.1
+module load bwa/0.7.17
+module load samtools/1.19.2
+
+# Align reads with bwa mem and process with samtools
+bwa mem -t 16 $genome_dir/VectorBase-66_AaegyptiLVP_AGWG_Genome.fasta "$file1" "$file2" | \
+samtools view -bS - | samtools sort -o "${output_dir}/${sample_id}.sorted.bam"
+samtools index "${output_dir}/${sample_id}.sorted.bam"
+
+echo "Processed ${sample_id}"
+
+EOL
+
+                # Submit the job
+                sbatch "$SBATCH_SCRIPT"
+        fi
+done
+
