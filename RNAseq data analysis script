@@ -40,6 +40,8 @@ done
 # Wait for all background jobs to finish
 wait
 
+----------------------------------------------------------------------------------------------------------
+
 # alignment with STAR
 
 #!/bin/bash
@@ -104,6 +106,9 @@ for i in $(seq 1 24); do
     fi
 done
 
+----------------------------------------------------------------------------------------------------------
+
+
 # Count reads for genes by htseq
 module load samtools/1.17
 
@@ -152,6 +157,9 @@ done
 wait
 
 echo "All analyses are completed."
+
+----------------------------------------------------------------------------------------------------------
+
 
 # DESeq2 for DEGs analysis and making plots in R
 rm(list = ls())
@@ -312,6 +320,9 @@ for(i in seq(1, 24, by = 6)) {
   
   write.csv(res_filtered_addpro_df, file = res_filtered_addpro_dfname, row.names = F)
 }
+
+----------------------------------------------------------------------------------------------------------
+
 
 # DEGs clustering and making plots in R
 rm(list=ls())
