@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# Directory containing BAM files
+BAM_DIR="/rhome/user/CUTRUN_analysis/alignment_output/filtered"
+BIGWIG_DIR="/rhome/user/CUTRUN_analysis/scalefacotr_norm_bigwig_dir"
+mkdir -p "$BIGWIG_DIR"
+
+# Define the output directory for log files
+LOG_DIR="${BIGWIG_DIR}/logs"
+mkdir -p "$LOG_DIR"
+
+# Scale factor file
+scalefactor_file="/rhome/user/CUTRUN_analysis/multiBamSummary/scalefactor.tab"
+
+# Load the deeptools module
+module load deeptools
+
+# Declare an associative array to hold the scaling factors
+declare -A scalefactors
+
+# Read the scaling factors into the associative array
+while IFS=$'\t' read -r sample scalingFactor; do
+    scalefactors[$sample]=$scalingFactor
+done < "$scalefactor_file"
+
+# Loop through each BAM file in the directory
+for bamfile in "$BAM_DIR"/*.bam; do
+        # Extract the base name of the file, includes '.bam'
+        sample_name=$(basename "$bamfile")
+
+        # Retrieve the scaling factor using the basename of the bam file
+        scalefactor=${scalefactors[$sample_name]}
+
+        # Check if we have a scaling factor
+        if [ -z "$scalefactor" ]; then
+                echo "No scaling factor found for $sample_name"
+                continue  # Skip this file or handle the error as necessary
+        fi
+
+        # Extract the sample ID without the '_filtered.bam' part
+        sample_id=${sample_name%_filtered.bam}
+
+        # Create a temporary SBATCH script for each sample
+        SBATCH_SCRIPT="/tmp/${sample_id}_deeptools.sh"
+        cat > "$SBATCH_SCRIPT" <<EOL
+#!/bin/bash
+
+#SBATCH --job-name=${sample_id}_bigwig
+#SBATCH --output=${LOG_DIR}/${sample_id}_bamCoverage.log
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
+#SBATCH --time=24:00:00
+#SBATCH --partition=intel
+
+# Run bamCoverage
+bamCoverage -b "${bamfile}" \\
+        -o "${BIGWIG_DIR}/${sample_id}.bw" \\
+        --binSize 5 \\
+        --scaleFactor "${scalefactor}" \\
+        --smoothLength 150 \\
+        --extendReads \\
+        --centerReads \\
+        --effectiveGenomeSize 1270000000 \\
+        -p 16
+
+EOL
+
+    # Submit the job
+    sbatch "$SBATCH_SCRIPT"
+done
+
+echo "All jobs have been submitted."
