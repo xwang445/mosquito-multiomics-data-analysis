@@ -1,0 +1,46 @@
+# quality check for ATACseq fastq files
+
+#!/bin/bash
+
+#SBATCH --nodes=4
+#SBATCH --ntasks=4
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=128G
+#SBATCH --time=48:00:00
+#SBATCH --mail-user=
+#SBATCH --mail-type=ALL
+#SBATCH -p intel
+#SBATCH --output=ATACseq_QC_%j.log
+
+module load fastqc/0.11.9
+
+# Maximum number of parallel FastQC jobs
+MAX_JOBS=24
+CURRENT_JOBS=0
+
+BASE_OUTPUT_DIR=ATACseq2_analysis/fastqc
+
+# Loop through each directory
+for dir in ATACseq2/*/; do
+    # Check if the directory exists
+    if [ -d "$dir" ]; then
+        OUTPUT_DIR="${BASE_OUTPUT_DIR}$(basename "$dir")"
+        mkdir -p "$OUTPUT_DIR"
+
+        for file in "${dir}"/*.fq.gz; do
+            fastqc -o "$OUTPUT_DIR" "$file" &
+            let CURRENT_JOBS=CURRENT_JOBS+1
+
+            # Wait if the number of current jobs reaches the maximum
+            if [ "$CURRENT_JOBS" -ge "$MAX_JOBS" ]; then
+                wait -n
+                let CURRENT_JOBS=CURRENT_JOBS-1
+            fi
+        done
+    else
+        echo "Directory $dir not found."
+    fi
+done
+
+# Wait for all background jobs to finish
+wait
