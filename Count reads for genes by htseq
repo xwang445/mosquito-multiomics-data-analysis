@@ -1,0 +1,48 @@
+# Count reads for genes by htseq
+module load samtools/1.17
+
+# Path to the reference gene model file (like a .bed file)
+REF_GTF_FILE="Aaegy_genome/VectorBase-66_AaegyptiLVP_AGWG.gff"
+
+# Base directory containing the numbered subdirectories 
+BASE_DIR="RNAseq/bamfiles"
+
+# Output directories for results
+OUTPUT_DIR="RNAseq/HTseq/output"
+
+# Create output directory if it doesn't exist
+mkdir -p "$OUTPUT_DIR"
+
+# Maximum number of parallel jobs
+MAX_JOBS=24
+
+# Loop through each subdirectory and run RSeQC tools
+for i in {1..24}; do
+    BAM_FILE="${BASE_DIR}/${i}/Aligned.sortedByCoord.out.bam"
+
+    if [ -f "$BAM_FILE" ]; then
+
+        # Index the BAM file with samtools
+        samtools index "$BAM_FILE"
+    
+        # Define output file names
+        OUT_count_mat="${OUTPUT_DIR}/${i}_counts.txt"
+
+        # Run htseq-count
+        htseq-count -f bam -s no -t exon -i gene_id "$BAM_FILE" "$REF_GTF_FILE" > "$OUT_count_mat" &
+    
+        # Limit number of parallel jobs
+        if (( $(jobs -r | wc -l) >= MAX_JOBS )); then
+                wait -n
+        fi
+
+        echo "Completed analysis for directory ${i}"
+    else
+        echo "BAM file not found in ${BASE_DIR}/${i}"
+    fi
+done
+
+# Wait for all background jobs to finish
+wait
+
+echo "All analyses are completed."
