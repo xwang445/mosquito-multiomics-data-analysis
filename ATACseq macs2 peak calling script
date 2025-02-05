@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# Define the directory containing BAM files
+bamfiles_dir="ATACseq2_analysis/alignment_output/filtered"
+
+# Define the base directory for MACS2 output
+macs2_output_base="ATACseq2_analysis/macs2_output"
+
+# Ensure the base output directory exists
+mkdir -p "$macs2_output_base"
+
+# Loop through BAM files in the directory
+for bamfile in "$bamfiles_dir"/*.bam; do
+    # Extract the sample ID from the BAM filename
+    sample_id=$(basename "$bamfile" _filtered.bam)
+    
+    # Create a temporary SBATCH script for each sample
+    SBATCH_SCRIPT="/tmp/${sample_id}_peak_calling.sh"
+    cat > "$SBATCH_SCRIPT" <<EOL
+#!/bin/bash
+
+#SBATCH --output=${bamfiles_dir}${sample_id}_%j.log
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
+#SBATCH --time=24:00:00
+#SBATCH --mail-user=email@address
+#SBATCH --mail-type=END,FAIL
+
+# Load the MACS2 module, if it's not available by default
+module load macs2/2.2.7
+module load samtools/1.19.2
+
+#samtools index "$bamfile"
+# Run MACS2 peak calling
+macs2 callpeak -t "$bamfile" \\
+        -f BAMPE \\
+        -g 1.27e9 \\
+        -p 1e-2 \\
+        --nomodel \\
+        --shift -100 \\
+        --extsize 200 \\
+        -B \\
+        --SPMR \\
+        --keep-dup auto \\
+        --call-summits \\
+        -n "${sample_id}" \\
+        --outdir "$macs2_output_base"
+
+echo "Processed ${sample_id}"
+
+EOL
+
+    # Submit the job
+    sbatch "$SBATCH_SCRIPT"
+done
