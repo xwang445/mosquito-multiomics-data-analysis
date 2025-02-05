@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# Define directories
+genome_dir="/rhome/user/mosqt/Aaegy_genome"
+output_dir="/rhome/user/CUTRUN_analysis/raw_alignment_output/"
+
+# Base directory for raw data
+RAW_DATA_DIR="/rhome/user/mosqt/cutrun_data/"
+
+# Loop through each directory
+for subdir in "$RAW_DATA_DIR"/*/; do
+        
+        # Check if the directory exists
+        if [ -d "$subdir" ]; then
+                echo "Processing $subdir..."
+
+                # Find all Read 1 FASTQ files and process them
+                find "$subdir" -name "*_1.fq.gz" -print0 | while IFS= read -r -d '' file_1; do
+
+                        # Extract the sample ID from the file name
+                        sample_id=$(basename "${file_1}" _1.fq.gz)
+
+                        # Ensure corresponding output directories exist
+                        ALIGN_DIR="${output_dir}/${sample_id}"
+                        mkdir -p "$ALIGN_DIR"
+
+                        # Define the corresponding Read 2 FASTQ file
+                        file_2="${file_1/_1.fq.gz/_2.fq.gz}"
+
+                        # Create a temporary sbatch script
+                        SBATCH_SCRIPT="/tmp/${sample_id}_cut_adapter.sh"
+                        cat > "$SBATCH_SCRIPT" <<EOL
+#!/bin/bash
+
+#SBATCH --job-name=raw_align_${sample_id}
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
+#SBATCH --time=24:00:00
+#SBATCH --mail-user=email@address
+#SBATCH --mail-type=END,FAIL
+#SBATCH -p intel
+#SBATCH --output="${ALIGN_DIR}/align_${sample_id}_%j.log"
+# Load modules for cutadapt and alignment tools
+source activate /opt/linux/rocky/8.x/x86_64/pkgs/cutadapt/4.1/env
+module load bwa/0.7.17
+module load samtools/1.19.2
+
+# Alignment with bwa and conversion to sorted BAM
+bwa mem -t 16 $genome_dir/VectorBase-66_AaegyptiLVP_AGWG_Genome.fasta \\
+        "$file_1" \\
+        "$file_2" | \\
+samtools view -bS - | \\
+samtools sort -o "${ALIGN_DIR}/${sample_id}.sorted.bam"
+
+# Index the sorted BAM file
+samtools index "${ALIGN_DIR}/${sample_id}.sorted.bam"
+
+EOL
+                        # Submit the job
+                        sbatch "$SBATCH_SCRIPT"
+                done
+        fi
+done
