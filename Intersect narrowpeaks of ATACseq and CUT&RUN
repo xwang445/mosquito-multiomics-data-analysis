@@ -1,0 +1,85 @@
+# firstly, CUT&RUN motif enrichment
+# directories are
+~/shared/user/CUTRUN_analysis/merged_macs2_output$ find -type d -name '*EcR'
+./PBM48h_EcR
+./PBM36h_EcR
+./PBM6h_EcR
+./PBM18h_EcR
+./PE96h_EcR
+
+# use *_summits.bed files, and set the window size to 100bp aound the summit. 
+# then perform motif enrichment by 
+# Note: findMotifsGenome.pl only accept chr_. it doesn't accept Aael5_1 something untraditional chromosome name
+
+#!/bin/bash
+
+# Define directories
+BED_DIR="/rhome/user/CUTRUN_analysis/merged_macs2_output"
+OUTPUT_DIR="/rhome/user/mosqt/Yike/cutrun"
+LOG_DIR="${OUTPUT_DIR}/logs"
+
+# Ensure necessary directories exist
+mkdir -p "$LOG_DIR"
+mkdir -p "$OUTPUT_DIR"
+
+# Process each BED file in each subdirectory
+for bedfile_dir in $BED_DIR/*EcR*/; do
+    sample_id=$(basename "$bedfile_dir")
+
+    # Assuming there is one .bed file per directory or you need to process all .bed files
+    for bed_file in "${bedfile_dir}"*.bed; do
+        if [ -f "$bed_file" ]; then  # Ensure it's a file
+            bed_basename=$(basename "$bed_file")
+
+            output_file="${bedfile_dir}${bed_basename%.bed}_chrModified.bed"
+            # Use awk to change specific chromosome names
+            awk 'BEGIN {OFS="\t";
+                # Define chromosome name mappings
+                chr_map["AaegL5_1"] = "chr1";
+                chr_map["AaegL5_2"] = "chr2";
+                chr_map["AaegL5_3"] = "chr3";
+            }
+            {
+                # Apply mapping to the first column if it exists in the map
+                if ($1 in chr_map) {
+                    $1 = chr_map[$1];
+                }
+                print $0;  # Print all columns
+            }' "$bed_file" > "$output_file"
+            BATCH_SCRIPT="/tmp/${sample_id}_${bed_basename}_process.sh"
+            cat > "$BATCH_SCRIPT" <<EOL
+#!/bin/bash
+
+#SBATCH --job-name=findMotif_${sample_id}
+#SBATCH --output=${LOG_DIR}/${sample_id}_%j.log
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=24:00:00
+#SBATCH --mail-user=email@address
+#SBATCH --mail-type=END,FAIL
+
+export PATH=/rhome/xwang445/shared/Xuesong/tools/homer/bin:$PATH
+
+# Run the motif finding command
+findMotifsGenome.pl $output_file \\
+        /rhome/user/mosqt/Aaegy_genome/VectorBase-66_AaegyptiLVP_Genome_chr.fasta \\
+        ${OUTPUT_DIR}/${sample_id} \\
+        -size 200
+
+EOL         
+
+            # Submit the job
+            sbatch "$BATCH_SCRIPT"
+        fi
+    done
+done
+
+echo "All jobs have been submitted."
+
+# annotate the motifs position and use them to intersect with the genes overlap with RNAseq data to only get the expressed genes.
+
+# CUT&RUN narrowPeak files pathway:/rhome/user/CUTRUN_analysis/macs2_output/renamed_files
+
+# ATACseq narrowPeak files pathway:
+/rhome/user/ATACseq/macs2_peak_calling
